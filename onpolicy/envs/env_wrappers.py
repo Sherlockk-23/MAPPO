@@ -6,6 +6,7 @@ import torch
 from multiprocessing import Process, Pipe
 from abc import ABC, abstractmethod
 from onpolicy.utils.util import tile_images
+from typing import List, Tuple, Union
 
 class CloudpickleWrapper(object):
     """
@@ -334,6 +335,8 @@ def shareworker(remote, parent_remote, env_fn_wrapper):
         elif cmd == 'render_vulnerability':
             fr = env.render_vulnerability(data)
             remote.send((fr))
+        elif cmd == "anneal_reward_shaping_factor":
+            env.anneal_reward_shaping_factor(data)
         else:
             raise NotImplementedError
 
@@ -394,6 +397,10 @@ class ShareSubprocVecEnv(ShareVecEnv):
         for p in self.ps:
             p.join()
         self.closed = True
+        
+    def anneal_reward_shaping_factor(self, steps):
+        for remote, step in zip(self.remotes, steps):
+            remote.send(("anneal_reward_shaping_factor", step))
 
 
 def choosesimpleworker(remote, parent_remote, env_fn_wrapper):
@@ -747,6 +754,9 @@ class ShareDummyVecEnv(ShareVecEnv):
                 env.render(mode=mode)
         else:
             raise NotImplementedError
+    def anneal_reward_shaping_factor(self, steps):
+        for env, step in zip(self.envs, steps):
+            env.anneal_reward_shaping_factor(step)
 
 
 class ChooseDummyVecEnv(ShareVecEnv):
@@ -785,6 +795,9 @@ class ChooseDummyVecEnv(ShareVecEnv):
                 env.render(mode=mode)
         else:
             raise NotImplementedError
+    def anneal_reward_shaping_factor(self, steps):
+        for env, step in zip(self.envs, steps):
+            env.anneal_reward_shaping_factor(step)
 
 class ChooseSimpleDummyVecEnv(ShareVecEnv):
     def __init__(self, env_fns):
@@ -820,3 +833,135 @@ class ChooseSimpleDummyVecEnv(ShareVecEnv):
                 env.render(mode=mode)
         else:
             raise NotImplementedError
+
+
+class ShareSubprocDummyBatchVecEnv(ShareVecEnv):
+    def __init__(self, env_fns, dummy_batch_size: int = 1, spaces=None):
+        self.waiting = False
+        self.closed = False
+        nenvs = len(env_fns)
+        assert nenvs % dummy_batch_size == 0
+        nbatchs = nenvs // dummy_batch_size
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nbatchs)])
+        self.dummy_batch_size = dummy_batch_size
+        self.nbatchs = nbatchs
+
+        env_fn_batchs = self._split_batch(env_fns)
+
+        least_used_cpus = sorted(
+            [(c_i, c_percent) for c_i, c_percent in enumerate(psutil.cpu_percent(10, percpu=True))],
+            key=lambda x: x[1],
+        )
+        least_used_cpus = [x[0] for x in least_used_cpus]
+
+        self.ps = [
+            Process(
+                target=dummyvecenvworker,
+                args=(
+                    work_remote,
+                    remote,
+                    CloudpickleWrapper(env_fn_batch),
+                    least_used_cpus[work_id % psutil.cpu_count()],
+                ),
+            )
+            for work_id, (work_remote, remote, env_fn_batch) in enumerate(
+                zip(self.work_remotes, self.remotes, env_fn_batchs)
+            )
+        ]
+        for p_i, p in enumerate(self.ps):
+            p.daemon = True  # if the main process crashes, we should not cause things to hang
+            p.start()
+
+        for remote in self.work_remotes:
+            remote.close()
+        self.remotes[0].send(("get_spaces", None))
+        observation_space, share_observation_space, action_space = self.remotes[0].recv()
+        super().__init__(len(env_fns), observation_space, share_observation_space, action_space)
+
+    def _split_batch(self, data: List):
+        return [data[i : i + self.dummy_batch_size] for i in range(0, len(data), self.dummy_batch_size)]
+
+    def _merge_batch(self, data: List[Union[Tuple, List]]):
+        return sum(data[1:], start=data[0])
+
+    def step_async(self, actions):
+        action_batchs = self._split_batch(actions)
+        for remote, action_batch in zip(self.remotes, action_batchs):
+            remote.send(("step", action_batch))
+        self.waiting = True
+
+    def step_wait(self):
+        result_batchs = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        (
+            obs_batchs,
+            share_obs_batchs,
+            rew_batchs,
+            done_batchs,
+            info_batchs,
+            available_actions_batchs,
+        ) = zip(*result_batchs)
+        return (
+            self._merge_batch(obs_batchs),
+            np.vstack(share_obs_batchs),
+            np.vstack(rew_batchs),
+            np.vstack(done_batchs),
+            self._merge_batch(info_batchs),
+            np.vstack(available_actions_batchs),
+        )
+
+    def reset(self):
+        for remote in self.remotes:
+            remote.send(("reset", None))
+        result_batchs = [remote.recv() for remote in self.remotes]
+        obs_batchs, share_obs_batchs, available_actions_batchs = zip(*result_batchs)
+        return (
+            self._merge_batch(obs_batchs),
+            np.vstack(share_obs_batchs),
+            np.vstack(available_actions_batchs),
+        )
+
+    def reset_task(self):
+        for remote in self.remotes:
+            remote.send(("reset_task", None))
+        return self._merge_batch([remote.recv() for remote in self.remotes])
+
+    def anneal_reward_shaping_factor(self, steps):
+        step_batchs = self._split_batch(steps)
+        for remote, step_batch in zip(self.remotes, step_batchs):
+            remote.send(("anneal_reward_shaping_factor", step_batch))
+
+    def reset_featurize_type(self, featurize_types):
+        featurize_type_batchs = self._split_batch(featurize_types)
+        for remote, featurize_type_batch in zip(self.remotes, featurize_type_batchs):
+            remote.send(("reset_featurize_type", featurize_type_batch))
+
+    def load_policy(self, load_policy_cfgs):
+        load_policy_cfg_batchs = self._split_batch(load_policy_cfgs)
+        for remote, load_policy_cfg_batch in zip(self.remotes, load_policy_cfg_batchs):
+            remote.send(("load_policy", load_policy_cfg_batch))
+
+    def update_max_return(self, max_returns):
+        max_return_batchs = self._split_batch(max_returns)
+        for remote, max_return_batch in zip(self.remotes, max_return_batchs):
+            remote.send(("update_max_return", max_return_batch))
+
+    def close(self):
+        if self.closed:
+            return
+        if self.waiting:
+            for remote in self.remotes:
+                remote.recv()
+        for remote in self.remotes:
+            remote.send(("close", None))
+        for p in self.ps:
+            p.join()
+        self.closed = True
+
+    def render(self, mode: str = "rgb_array"):
+        for remote in self.remotes:
+            remote.send(("render", mode))
+        if mode == "rgb_array":
+            frame_batchs = [remote.recv() for remote in self.remotes]
+            return np.stack(frame_batchs)
+

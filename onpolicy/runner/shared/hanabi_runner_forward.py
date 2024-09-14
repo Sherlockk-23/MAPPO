@@ -184,6 +184,10 @@ class HanabiRunner(Runner):
             self.reset_choose[dones == True] = np.ones((dones == True).sum(), dtype=bool)
 
             # deal with all agents
+            print("shape of dones is: ")
+            print(dones.shape)
+            print("shape of rnn_states is: ")
+            print(self.turn_rnn_states.shape)
             self.use_available_actions[dones == True] = np.zeros(((dones == True).sum(), *self.buffer.available_actions.shape[3:]), dtype=np.float32)
             self.turn_masks[dones == True] = np.zeros(((dones == True).sum(), self.num_agents, 1), dtype=np.float32)
             self.turn_rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
