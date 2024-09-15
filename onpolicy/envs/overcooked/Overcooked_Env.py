@@ -1178,8 +1178,9 @@ class Overcooked(gym.Env):
 
     def render(self):
         try:
-            save_dir = f"{self.run_dir}/gifs/{self.layout_name}/traj_num_{self.traj_num}"
+            save_dir = f"{self.run_dir}/tmp/gifs/{self.layout_name}/traj_num_{self.traj_num}"
             save_dir = os.path.expanduser(save_dir)
+            #print(save_dir)
             StateVisualizer().display_rendered_trajectory(self.traj, img_directory_path=save_dir, ipython_display=False)
             for img_path in os.listdir(save_dir):
                 img_path = save_dir + "/" + img_path
@@ -1190,6 +1191,7 @@ class Overcooked(gym.Env):
                 img_path = save_dir + "/" + img_path
                 imgs.append(imageio.imread(img_path))
             save_path = save_dir + f'/reward_{self.traj["ep_returns"][0]}.gif'
+            #print(save_path)
             imageio.mimsave(
                 save_path,
                 imgs,
