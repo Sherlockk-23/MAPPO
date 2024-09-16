@@ -84,4 +84,7 @@ def get_overcooked_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
 
     parser.add_argument("--num_initial_state", type=int, default=5)
     parser.add_argument("--replay_return_threshold", type=float, default=0.75)
+
+    parser.add_argument("--reward_shaping_type", type=int, default=0)
+
     return parser

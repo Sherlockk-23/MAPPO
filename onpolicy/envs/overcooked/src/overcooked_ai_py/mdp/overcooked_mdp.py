@@ -51,6 +51,10 @@ SHAPED_INFOS = [
     "MOVEMENT",
     "IDLE_MOVEMENT",
     "IDLE_INTERACT",
+    # added info #
+   # "USEFUL_ING_PICK_UP",
+   # "ONION_PICK_UP_FROM_O",
+    "USEFUL_COOK"
 ]
 
 
@@ -978,6 +982,8 @@ class OvercookedGridworld:
         self.num_players = len(start_player_positions)
         self.start_bonus_orders = start_bonus_orders
         self.reward_shaping_params = BASE_REW_SHAPING_PARAMS if rew_shaping_params is None else rew_shaping_params
+        print("In overcooked_mdp, the shaping params is :::::::::::::::::::::::::::::::")
+        print(self.reward_shaping_params)
         self.layout_name = layout_name
         self.order_bonus = order_bonus
         self.start_state = start_state
@@ -1340,6 +1346,8 @@ class OvercookedGridworld:
             elif terrain_type == "O" and player.held_object is None:
                 self.log_object_pickup(events_infos, new_state, "onion", pot_states, player_idx)
                 shaped_info[player_idx][f"pickup_onion_from_O"] += 1
+                shaped_reward[player_idx] += self.reward_shaping_params["ONION_PICK_UP_FROM_O_REW"]
+                
 
                 # Onion pickup from dispenser
                 obj = ObjectState("onion", pos)
@@ -1369,6 +1377,12 @@ class OvercookedGridworld:
                 if not self.old_dynamics and self.soup_to_be_cooked_at_location(new_state, i_pos):
                     soup = new_state.get_object(i_pos)
                     soup.begin_cooking()
+                    # here!! add penalty or rewards! 
+                    if self.is_cooking_useful(new_state, soup):
+                        shaped_reward[player_idx] += self.reward_shaping_params["USEFUL_COOKING_REW"]
+                        shaped_info[player_idx]["USEFUL_COOK"] += 1
+                    else:
+                        shaped_reward[player_idx] += self.reward_shaping_params["USELESS_COOKING_REW"]
                     shaped_info[player_idx]["cook"] += 1
 
             elif terrain_type == "P" and player.has_object():
@@ -1442,6 +1456,7 @@ class OvercookedGridworld:
                     events_infos["soup_delivery"][player_idx] = True
             else:
                 shaped_info[player_idx]["IDLE_INTERACT"] += 1
+                shaped_reward[player_idx] += self.reward_shaping_params["IDLE_INTERACT_REW"]
 
         return sparse_reward, shaped_reward, shaped_info
 
@@ -2052,7 +2067,15 @@ class OvercookedGridworld:
         old_recipe = Recipe(old_soup.ingredients) if old_soup.ingredients else None
         old_val = self.get_recipe_value(state, self.get_optimal_possible_recipe(state, old_recipe))
         return old_val <= 0
-
+    
+    def is_cooking_useful(self, state, pot):
+        """
+        It is useful to start cooking a soup only if it's in the recipe list
+        """
+        # Check if any of the recipes in the pot states are in the list of all orders
+        if pot.recipe in state.all_orders:
+            return True
+        return False
     #####################
     # TERMINAL GRAPHICS #
     #####################

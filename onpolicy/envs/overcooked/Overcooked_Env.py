@@ -17,7 +17,7 @@ from .src.overcooked_ai_py.mdp.actions import Action, Direction
 from .src.overcooked_ai_py.mdp.overcooked_mdp import (
     EVENT_TYPES,
     SHAPED_INFOS,
-    OvercookedGridworld,
+    OvercookedGridworld
 )
 from .src.overcooked_ai_py.mdp.overcooked_trajectory import (
     DEFAULT_TRAJ_KEYS,
@@ -715,6 +715,23 @@ class Overcooked(gym.Env):
             "SOUP_DISTANCE_REW": 0,
         }
         # MARK: use reward shaping
+        if all_args.reward_shaping_type==1:
+            rew_shaping_params = {
+                "PLACEMENT_IN_POT_REW": 6,
+                "DISH_PICKUP_REWARD": 3,
+                "SOUP_PICKUP_REWARD": 5,
+                "DISH_DISP_DISTANCE_REW": 0,
+                "POT_DISTANCE_REW": 0,
+                "SOUP_DISTANCE_REW": 0,
+                "IDLE_INTERACT_REW": -1,
+                "ONION_PICK_UP_FROM_O_REW": 1,
+                "USEFUL_COOKING_REW": 5,
+                "USELESS_COOKING_REW": -5,
+                "USEFUL_DISH_PICK_UP_REW": 3
+            }
+        print(rew_shaping_params)
+
+
         mdp_params.update(
             {
                 "rew_shaping_params": rew_shaping_params,
@@ -726,6 +743,7 @@ class Overcooked(gym.Env):
             "evaluation": evaluation,
         }
 
+       
         # if getattr(all_args, "stage", 1) == 1:
         #     rew_shaping_params = {
         #         "PLACEMENT_IN_POT_REW": 0,
