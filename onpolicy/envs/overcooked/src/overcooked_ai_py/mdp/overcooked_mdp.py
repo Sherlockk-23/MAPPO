@@ -54,7 +54,8 @@ SHAPED_INFOS = [
     # added info #
    # "USEFUL_ING_PICK_UP",
    # "ONION_PICK_UP_FROM_O",
-    "USEFUL_COOK"
+    "USEFUL_COOK",
+    "USELESS_SOUP_DROP"
 ]
 
 
@@ -1329,6 +1330,10 @@ class OvercookedGridworld:
                     self.log_object_drop(events_infos, new_state, obj_name, pot_states, player_idx)
                     shaped_info[player_idx][f"put_{obj_name}_on_X"] += 1
 
+                    if obj_name=="soup" and not self.is_soup_drop_useful(new_state,player.get_object()):
+                        shaped_reward[player_idx] += self.reward_shaping_params["PLACE_SOUP_ON_X_REW"]
+                        shaped_info[player_idx][f"USELESS_SOUP_DROP"] += 1
+
                     # Drop object on counter
                     obj = player.remove_object()
                     new_state.add_object(obj, i_pos)
@@ -1336,6 +1341,10 @@ class OvercookedGridworld:
                     obj_name = new_state.get_object(i_pos).name
                     self.log_object_pickup(events_infos, new_state, obj_name, pot_states, player_idx)
                     shaped_info[player_idx][f"pickup_{obj_name}_from_X"] += 1
+
+                    if obj_name=="dish" and self.is_dish_pickup_useful(new_state, pot_states):
+                        shaped_reward[player_idx] += self.reward_shaping_params["DISH_PICKUP_REWARD"]
+                        shaped_info[player_idx][f"USEFUL_DISH_PICKUP"] += 1
 
                     # Pick up object from counter
                     obj = new_state.remove_object(i_pos)
@@ -2076,6 +2085,14 @@ class OvercookedGridworld:
         if pot.recipe in state.all_orders:
             return True
         return False
+    
+    def is_soup_drop_useful(self, state, soup):
+        """
+        It is useful to drop a soup only if it's in the recipe list
+        """
+        if soup.recipe in state.all_orders:
+            return False
+        return True
     #####################
     # TERMINAL GRAPHICS #
     #####################

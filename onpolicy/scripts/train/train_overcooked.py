@@ -8,12 +8,9 @@ import numpy as np
 from pathlib import Path
 import torch
 from onpolicy.config import get_config
-from onpolicy.envs.mpe.MPE_env import MPEEnv
-from onpolicy.envs.env_wrappers import SubprocVecEnv, DummyVecEnv, ShareSubprocVecEnv
+from onpolicy.envs.env_wrappers import ShareDummyVecEnv, ShareSubprocVecEnv
 
-from onpolicy.config import get_config
-from onpolicy.envs.env_wrappers import ShareDummyVecEnv, ShareSubprocDummyBatchVecEnv
-from onpolicy.envs.overcooked.Overcooked_Env import Overcooked as Overcooked_new
+from onpolicy.envs.overcooked.Overcooked_Env import Overcooked
 from onpolicy.envs.overcooked_config import get_overcooked_args
 from onpolicy.utils.util import get_base_run_dir, setup_seed
 
@@ -28,7 +25,7 @@ def make_train_env(all_args, run_dir=''):
                     print("Not Supporting old version! ")
                     raise NotImplementedError
                 else:
-                    env = Overcooked_new(all_args, run_dir)
+                    env = Overcooked(all_args, run_dir)
             else:
                 print("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
@@ -47,10 +44,10 @@ def make_eval_env(all_args, run_dir=''):
         def init_env():
             if all_args.env_name == "Overcooked":
                 if all_args.overcooked_version == "old":
+                    print("Not Supporting old version! ")
                     raise NotImplementedError
-                    env = Overcooked(all_args, run_dir, evaluation=True)
                 else:
-                    env = Overcooked_new(all_args, run_dir, evaluation=True)
+                    env = Overcooked(all_args, run_dir, evaluation=True)
             else:
                 print("Can not support the " + all_args.env_name + "environment.")
                 raise NotImplementedError
@@ -85,11 +82,6 @@ def parse_args(args, parser):
     #  above are added, below are mpe or sth  #
     ###########################################
     
-    parser.add_argument('--scenario_name', type=str,
-                        default='simple_spread', help="Which scenario to run on")
-    parser.add_argument("--num_landmarks", type=int, default=3)
-    parser.add_argument('--num_agents', type=int,
-                        default=2, help="number of players")
 
     all_args = parser.parse_known_args(args)[0]
     from onpolicy.envs.overcooked_config import OLD_LAYOUTS
@@ -121,9 +113,6 @@ def main(args):
         all_args.use_centralized_V = False
     else:
         raise NotImplementedError
-
-    assert (all_args.share_policy == True and all_args.scenario_name == 'simple_speaker_listener') == False, (
-        "The simple_speaker_listener scenario can not use shared policy. Please check the config.py.")
 
     # cuda
     if all_args.cuda and torch.cuda.is_available():
@@ -196,8 +185,7 @@ def main(args):
     if all_args.share_policy:
         from onpolicy.runner.shared.overcooked_runner import OvercookedRunner as Runner
     else:
-        print("share_policy is: ")
-        print(all_args.share_policy)
+        print("Only support share_policy now.")
         raise NotImplementedError
         #from onpolicy.runner.separated.overcooked_runner import OvercookedRunner as Runner
         

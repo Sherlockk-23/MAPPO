@@ -719,15 +719,16 @@ class Overcooked(gym.Env):
             rew_shaping_params = {
                 "PLACEMENT_IN_POT_REW": 6,
                 "DISH_PICKUP_REWARD": 3,
-                "SOUP_PICKUP_REWARD": 5,
+                "SOUP_PICKUP_REWARD": 7,
                 "DISH_DISP_DISTANCE_REW": 0,
                 "POT_DISTANCE_REW": 0,
                 "SOUP_DISTANCE_REW": 0,
                 "IDLE_INTERACT_REW": -1,
                 "ONION_PICK_UP_FROM_O_REW": 1,
-                "USEFUL_COOKING_REW": 5,
+                "USEFUL_COOKING_REW": 7,
                 "USELESS_COOKING_REW": -5,
-                "USEFUL_DISH_PICK_UP_REW": 3
+                "USEFUL_DISH_PICK_UP_REW": 3,
+                "PLACE_SOUP_ON_X_REW": -3
             }
         print(rew_shaping_params)
 
@@ -1194,11 +1195,15 @@ class Overcooked(gym.Env):
         for key in TIMESTEP_TRAJ_KEYS:
             self.traj[key].append([])
 
-    def render(self):
+    def render(self):  # TODO: try to name the gif in an unrepeated way
         try:
             save_dir = f"{self.run_dir}/tmp/gifs/{self.layout_name}/traj_num_{self.traj_num}"
             save_dir = os.path.expanduser(save_dir)
-            #print(save_dir)
+            # Check if the file already exists
+            save_path = save_dir + f'/reward_{self.traj["ep_returns"][0]}.gif'   
+            if os.path.exists(save_path):
+                print(f"File {save_path} already exists. Skipping save.")
+                return
             StateVisualizer().display_rendered_trajectory(self.traj, img_directory_path=save_dir, ipython_display=False)
             for img_path in os.listdir(save_dir):
                 img_path = save_dir + "/" + img_path
@@ -1207,8 +1212,7 @@ class Overcooked(gym.Env):
             imgs_dir = sorted(imgs_dir, key=lambda x: int(x.split(".")[0]))
             for img_path in imgs_dir:
                 img_path = save_dir + "/" + img_path
-                imgs.append(imageio.imread(img_path))
-            save_path = save_dir + f'/reward_{self.traj["ep_returns"][0]}.gif'
+                imgs.append(imageio.imread(img_path))    
             #print(save_path)
             imageio.mimsave(
                 save_path,
